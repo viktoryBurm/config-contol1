@@ -1,23 +1,31 @@
-wc /home/user/documents/file1.txt
-wc /home/user/documents/file2.txt
-wc /etc/config.conf
-wc nonexistent.txt
+ls /
+tree /
 
-du
-du /home
-du /home/user/documents
+cp /home/user/documents/file1.txt /file1_copy.txt
+cp /home/user/documents/file2.txt /home/file2_copy.txt
+cp /etc/config.conf /home/user/config_backup.conf
 
-tree
-tree /home
-tree /home/user
+ls /
+ls /home
+ls /home/user
+cat /file1_copy.txt
+cat /home/file2_copy.txt
+cat /home/user/config_backup.conf
+
+wc /home/user/documents/file1.txt /file1_copy.txt
+wc /home/user/documents/file2.txt /home/file2_copy.txt
+wc /etc/config.conf /home/user/config_backup.conf
+
+cp /nonexistent.txt /copy.txt
+cp /home/user/documents/file1.txt /nonexistent_dir/copy.txt
+cp /home /home_copy
+cp /home/user/documents/file1.txt /etc/config.conf
 
 cd /home/user/documents
-pwd
+cp file1.txt file1_local_copy.txt
 ls
-wc file1.txt file2.txt
-du
-tree
+cat file1_local_copy.txt
 
-wc /home
-tree /etc/config.conf
-du /nonexistent
+cd /
+tree
+du

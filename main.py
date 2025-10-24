@@ -189,7 +189,21 @@ class VFS:
                 return None
             current = content[part]
         
-        return current  
+        return current
+
+    def get_parent_node(self, path):
+        """
+        Получает родительский узел для указанного пути
+        """
+        if path == "/":
+            return None
+        
+        parts = [p for p in path.split('/') if p]
+        if len(parts) == 1:
+            return self.file_system.get("/")
+        
+        parent_path = '/' + '/'.join(parts[:-1])
+        return self.get_node(parent_path)
 
     def read_file(self, path):
         """
@@ -289,6 +303,31 @@ class VFS:
                 result += ("└── " if is_last_item else "├── ") + name + "\n"
         
         return result
+
+    def copy_file(self, src_path, dst_path):
+        """
+        Копирует файл из src_path в dst_path в VFS
+        """
+        src_node = self.get_node(src_path)
+        if src_node is None or src_node.get('type') != 'file':
+            return False, "Исходный файл не существует или не является файлом"
+        
+        # Получаем родительскую директорию для dst_path
+        dst_parts = [p for p in dst_path.split('/') if p]
+        dst_parent_path = '/' + '/'.join(dst_parts[:-1]) if len(dst_parts) > 1 else '/'
+        dst_name = dst_parts[-1] if dst_parts else ""
+        
+        dst_parent = self.get_node(dst_parent_path)
+        if dst_parent is None or dst_parent.get('type') != 'directory':
+            return False, "Целевая директория не существует"
+        
+        # Копируем содержимое файла
+        dst_parent['content'][dst_name] = {
+            "type": "file",
+            "content": src_node.get('content', '')
+        }
+        
+        return True, "Файл успешно скопирован"
 
 class ShellEmulator:
     """
@@ -483,6 +522,19 @@ class ShellEmulator:
             else:
                 print(f"tree: {target_path} [ошибка открытия каталога]")
         
+        # Новая команда cp для копирования файлов
+        elif command == "cp":
+            if len(args) != 2:
+                print("cp: требуется два аргумента: исходный_файл целевой_файл")
+                return
+            
+            src_path = self.vfs.resolve_path(args[0])
+            dst_path = self.vfs.resolve_path(args[1])
+            
+            success, message = self.vfs.copy_file(src_path, dst_path)
+            if not success:
+                print(f"cp: {message}")
+        
         # Обрабатываем неизвестные команды
         elif command:
             print(f"Команда '{command}' не найдена")
@@ -554,7 +606,7 @@ class ShellEmulator:
         
         # Затем переходим в интерактивный режим работы с пользователем
         print("\nИНТЕРАКТИВНЫЙ РЕЖИМ")
-        print("Доступные команды: ls, cd, cat, pwd, echo, wc, du, tree, exit")  # Список поддерживаемых команд
+        print("Доступные команды: ls, cd, cat, pwd, echo, wc, du, tree, cp, exit")  # Список поддерживаемых команд
         print("Для выхода введите 'exit'")  # Подсказка как выйти
         print("-" * 50)  # Разделительная линия
         
