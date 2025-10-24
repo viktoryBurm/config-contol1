@@ -1,12 +1,23 @@
-#!/bin/bash
-pwd
-ls
-ls /home
-cd /home/user
-pwd
-ls
-cd documents
-cat file1.txt
-wc data.txt
+wc /home/user/documents/file1.txt
+wc /home/user/documents/file2.txt
+wc /etc/config.conf
+wc nonexistent.txt
+
+du
+du /home
+du /home/user/documents
+
+tree
 tree /home
-cd /
+tree /home/user
+
+cd /home/user/documents
+pwd
+ls
+wc file1.txt file2.txt
+du
+tree
+
+wc /home
+tree /etc/config.conf
+du /nonexistent

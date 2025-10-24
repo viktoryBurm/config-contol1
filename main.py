@@ -202,6 +202,94 @@ class VFS:
         content = node.get('content', '')
         return self.decode_content(content)
 
+    def get_file_size(self, path):
+        """
+        Получает размер файла в VFS
+        """
+        content = self.read_file(path)
+        if content is None:
+            return None
+        return len(content.encode('utf-8'))
+
+    def count_file_stats(self, path):
+        """
+        Подсчитывает статистику файла (строки, слова, байты)
+        """
+        content = self.read_file(path)
+        if content is None:
+            return None, None, None
+        
+        lines = content.splitlines()
+        line_count = len(lines)
+        word_count = sum(len(line.split()) for line in lines)
+        byte_count = len(content.encode('utf-8'))
+        
+        return line_count, word_count, byte_count
+
+    def get_directory_size(self, path):
+        """
+        Рекурсивно вычисляет общий размер всех файлов в директории
+        """
+        if not self.path_exists(path):
+            return None
+        
+        total_size = 0
+        
+        if path == "/":
+            content = self.file_system.get("/", {}).get('content', {})
+        else:
+            node = self.get_node(path)
+            if node.get('type') != 'directory':
+                return None
+            content = node.get('content', {})
+        
+        for name, item in content.items():
+            item_path = path + '/' + name if path != '/' else '/' + name
+            if item.get('type') == 'file':
+                file_size = self.get_file_size(item_path)
+                if file_size is not None:
+                    total_size += file_size
+            elif item.get('type') == 'directory':
+                dir_size = self.get_directory_size(item_path)
+                if dir_size is not None:
+                    total_size += dir_size
+        
+        return total_size
+
+    def get_tree_structure(self, path, prefix="", is_last=True, is_root=True):
+        """
+        Рекурсивно строит древовидную структуру директории
+        """
+        if not self.path_exists(path):
+            return None
+        
+        node = self.get_node(path)
+        if node.get('type') != 'directory':
+            return None
+        
+        if is_root:
+            result = path + "\n"
+        else:
+            result = prefix + ("└── " if is_last else "├── ") + os.path.basename(path) + "\n"
+        
+        content = node.get('content', {})
+        items = list(content.items())
+        
+        for i, (name, item) in enumerate(items):
+            item_path = path + '/' + name if path != '/' else '/' + name
+            is_last_item = i == len(items) - 1
+            
+            if item.get('type') == 'directory':
+                new_prefix = prefix + ("    " if is_last else "│   ")
+                subtree = self.get_tree_structure(item_path, new_prefix, is_last_item, False)
+                if subtree:
+                    result += subtree
+            else:
+                result += prefix + ("    " if is_last else "│   ")
+                result += ("└── " if is_last_item else "├── ") + name + "\n"
+        
+        return result
+
 class ShellEmulator:
     """
     Основной класс эмулятора командной строки.
@@ -326,7 +414,7 @@ class ShellEmulator:
                 
                 if self.vfs.path_exists(new_path):
                     # Получаем узел по пути
-                    node = self.vfs.get_node(new_path)  # Нужно добавить этот метод!
+                    node = self.vfs.get_node(new_path)
                     if node.get('type') == 'directory':
                         self.vfs.current_vfs_path = new_path
                     else:
@@ -354,6 +442,46 @@ class ShellEmulator:
         # Команда echo для демонстрации работы с аргументами
         elif command == "echo":
             print(f"echo: {' '.join(args)}")
+        
+        # Новая команда wc для подсчета строк, слов и байтов
+        elif command == "wc":
+            if not args:
+                print("wc: отсутствует операнд")
+                return
+            
+            for file_path in args:
+                line_count, word_count, byte_count = self.vfs.count_file_stats(self.vfs.resolve_path(file_path))
+                if line_count is not None:
+                    print(f"  {line_count}  {word_count}  {byte_count} {file_path}")
+                else:
+                    print(f"wc: {file_path}: Нет такого файла или каталога")
+        
+        # Новая команда du для показа размера файлов и директорий
+        elif command == "du":
+            if not args:
+                # Если аргументов нет, показываем размер текущей директории
+                target_path = self.vfs.current_vfs_path
+            else:
+                target_path = self.vfs.resolve_path(args[0])
+            
+            size = self.vfs.get_directory_size(target_path)
+            if size is not None:
+                print(f"{size}\t{target_path}")
+            else:
+                print(f"du: невозможно получить доступ к '{target_path}': Нет такого файла или каталога")
+        
+        # Новая команда tree для показа древовидной структуры
+        elif command == "tree":
+            if not args:
+                target_path = self.vfs.current_vfs_path
+            else:
+                target_path = self.vfs.resolve_path(args[0])
+            
+            tree_structure = self.vfs.get_tree_structure(target_path)
+            if tree_structure is not None:
+                print(tree_structure)
+            else:
+                print(f"tree: {target_path} [ошибка открытия каталога]")
         
         # Обрабатываем неизвестные команды
         elif command:
@@ -426,7 +554,7 @@ class ShellEmulator:
         
         # Затем переходим в интерактивный режим работы с пользователем
         print("\nИНТЕРАКТИВНЫЙ РЕЖИМ")
-        print("Доступные команды: ls, cd, cat, pwd, echo, exit")  # Список поддерживаемых команд
+        print("Доступные команды: ls, cd, cat, pwd, echo, wc, du, tree, exit")  # Список поддерживаемых команд
         print("Для выхода введите 'exit'")  # Подсказка как выйти
         print("-" * 50)  # Разделительная линия
         
