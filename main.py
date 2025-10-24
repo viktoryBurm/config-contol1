@@ -4,6 +4,203 @@ import shlex  # для корректного разбиения командн�
 import socket  # для получения информации о сетевых параметрах (имя хоста)
 import argparse  # для парсинга аргументов командной строки
 import sys  # для работы с системными параметрами (не используется явно, но может потребоваться)
+import json  # для работы с JSON-файлами VFS
+import base64  # для декодирования base64 данных
+
+class VFS:
+    """
+    Класс для работы с виртуальной файловой системой (VFS)
+    Все операции производятся в памяти на основе JSON-файла
+    """
+    
+    def __init__(self, vfs_path=None):
+        """
+        Инициализация виртуальной файловой системы
+        
+        Args:
+            vfs_path (str): Путь к JSON-файлу с описанием VFS
+        """
+        self.vfs_path = vfs_path
+        self.file_system = {}  # Словарь для хранения структуры файловой системы
+        self.current_vfs_path = "/"  # Текущий путь в VFS
+        
+        if vfs_path and os.path.exists(vfs_path):
+            self.load_vfs(vfs_path)
+        else:
+            # Создаем минимальную VFS по умолчанию
+            self.create_default_vfs()
+    
+    def load_vfs(self, vfs_path):
+        """
+        Загружает VFS из JSON-файла
+        """
+        try:
+            with open(vfs_path, 'r', encoding='utf-8') as f:
+                self.file_system = json.load(f)
+            print(f"VFS загружена из {vfs_path}")
+        except Exception as e:
+            print(f"Ошибка загрузки VFS: {e}")
+            self.create_default_vfs()
+    
+    def create_default_vfs(self):
+        """Создает минимальную VFS по умолчанию"""
+        self.file_system = {
+            "/": {
+                "type": "directory",
+                "content": {
+                    "home": {
+                        "type": "directory", 
+                        "content": {
+                            "user": {
+                                "type": "directory",
+                                "content": {
+                                    "documents": {
+                                        "type": "directory",
+                                        "content": {
+                                            "readme.txt": {
+                                                "type": "file",
+                                                "content": "Добро пожаловать в VFS!"
+                                            }
+                                        }
+                                    },
+                                    "file1.txt": {
+                                        "type": "file", 
+                                        "content": "Содержимое file1.txt"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        print("Создана VFS по умолчанию")
+    
+    def decode_content(self, content):
+        """
+        Декодирует содержимое файла из base64 если необходимо
+        """
+        if isinstance(content, str) and content.startswith('base64:'):
+            try:
+                base64_data = content[7:]  # Убираем префикс 'base64:'
+                decoded = base64.b64decode(base64_data).decode('utf-8')
+                return decoded
+            except Exception as e:
+                return f"Ошибка декодирования: {e}"
+        return content
+    
+    def get_path_parts(self, path):
+        """
+        Разбивает путь на части, обрабатывая относительные пути и символы . и ..
+        """
+        if path.startswith('/'):
+            # Абсолютный путь
+            parts = [p for p in path.split('/') if p]
+            parts.insert(0, '/')
+        else:
+            # Относительный путь - начинаем с текущего
+            current_parts = [p for p in self.current_vfs_path.split('/') if p]
+            if current_parts and current_parts[0] == '':
+                current_parts = current_parts[1:]
+            
+            new_parts = [p for p in path.split('/') if p]
+            
+            # Обрабатываем . и ..
+            result_parts = []
+            for part in new_parts:
+                if part == '.':
+                    continue
+                elif part == '..':
+                    if result_parts:
+                        result_parts.pop()
+                    elif current_parts:
+                        current_parts.pop()
+                else:
+                    result_parts.append(part)
+            
+            parts = ['/'] + current_parts + result_parts
+        
+        return parts
+    
+    def resolve_path(self, path):
+        """
+        Преобразует путь в абсолютный путь VFS
+        """
+        parts = self.get_path_parts(path)
+        return '/' + '/'.join(parts[1:]) if len(parts) > 1 else '/'
+
+    def path_exists(self, path):
+        """
+        Проверяет существование пути в VFS
+        """
+        if path == "/":
+            return True
+        
+        parts = [p for p in path.split('/') if p]  # Убираем пустые элементы
+        current = self.file_system.get("/", {})
+        
+        for part in parts:
+            content = current.get('content', {})
+            if part not in content:
+                return False
+            current = content[part]
+        
+        return True
+
+    def get_directory_listing(self, path):
+        """
+        Получает список содержимого директории
+        """
+        if not self.path_exists(path):
+            return None
+        
+        if path == "/":
+            content = self.file_system.get("/", {}).get('content', {})
+            return list(content.keys())
+        
+        parts = [p for p in path.split('/') if p]
+        current = self.file_system.get("/", {})
+        
+        for part in parts:
+            content = current.get('content', {})
+            current = content[part]
+        
+        if current.get('type') != 'directory':
+            return None
+        
+        return list(current.get('content', {}).keys())
+
+    def get_node(self, path):
+        """
+        Получает узел VFS по указанному пути
+        """
+        if not self.path_exists(path):
+            return None
+        
+        if path == "/":
+            return self.file_system.get("/")
+        
+        parts = [p for p in path.split('/') if p]
+        current = self.file_system.get("/", {})
+        
+        for part in parts:
+            content = current.get('content', {})
+            if part not in content:
+                return None
+            current = content[part]
+        
+        return current  
+
+    def read_file(self, path):
+        """
+        Читает содержимое файла из VFS
+        """
+        node = self.get_node(path)
+        if node is None or node.get('type') != 'file':
+            return None
+        
+        content = node.get('content', '')
+        return self.decode_content(content)
 
 class ShellEmulator:
     """
@@ -32,18 +229,14 @@ class ShellEmulator:
         # Флаг работы эмулятора. Когда становится False - программа завершается
         self.running = True
         
-        # Сохраняем путь к виртуальной файловой системе (Virtual File System)
-        # Если параметр не передан, будет использоваться None
-        self.vfs_path = vfs_path
-        
-        # Сохраняем путь к стартовому скрипту
-        # Если параметр не передан, будет использоваться None
+        # Инициализируем VFS
+        self.vfs = VFS(vfs_path)
         self.startup_script = startup_script
         
         # Выводим отладочную информацию о конфигурации эмулятора
         print("КОНФИГУРАЦИЯ ЭМУЛЯТОРА")
         # Выводим путь к VFS или сообщение, что путь не указан
-        print(f"VFS путь: {self.vfs_path or 'Не указан'}")
+        print(f"VFS путь: {vfs_path or 'Не указан (используется VFS по умолчанию)'}")
         # Выводим путь к стартовому скрипту или сообщение, что скрипт не указан
         print(f"Стартовый скрипт: {self.startup_script or 'Не указан'}")
         # Рисуем разделительную линию для визуального отделения конфигурации
@@ -57,13 +250,12 @@ class ShellEmulator:
             str: Строка приглашения для пользователя
         """
         
-        # Проверяем, находимся ли мы в домашней директории пользователя
-        if self.current_dir != os.path.expanduser("~"):
-            # Если нет - берем только имя текущей директории (без полного пути)
-            dir_name = os.path.basename(self.current_dir)
+        # Используем VFS путь вместо реального пути ОС
+        vfs_dir = self.vfs.current_vfs_path
+        if vfs_dir == "/":
+            dir_name = "/"
         else:
-            # Если да - используем символ '~' как в настоящем bash
-            dir_name = "~"
+            dir_name = os.path.basename(vfs_dir) if vfs_dir != "/" else "/"
         
         # Формируем и возвращаем строку приглашения
         return f"{self.username}@{self.hostname}:{dir_name}$ "
@@ -104,10 +296,6 @@ class ShellEmulator:
     def execute_command(self, command, args):
         """
         Выполняет команду эмулятора.
-        
-        Args:
-            command (str): Имя команды для выполнения
-            args (list): Список аргументов команды
         """
         
         # Проверяем команду exit - завершение работы эмулятора
@@ -116,37 +304,61 @@ class ShellEmulator:
             self.running = False
             print("Выход из эмулятора")
         
-        # Обрабатываем команду ls (list directory)
+        # Обрабатываем команду ls (list directory) - теперь работает с VFS
         elif command == "ls":
-            print(f"Команда: ls")  # Выводим имя команды
+            target_path = args[0] if args else self.vfs.current_vfs_path
             
-            # Проверяем есть ли аргументы у команды
-            if args:
-                print(f"Аргументы: {args}")  # Выводим аргументы если они есть
+            listing = self.vfs.get_directory_listing(target_path)
+            if listing is not None:
+                for item in listing:
+                    print(item)
             else:
-                print("Аргументы отсутствуют")  # Сообщаем об отсутствии аргументов
+                print(f"ls: невозможно получить доступ к '{target_path}': Нет такого файла или каталога")
         
-        # Обрабатываем команду cd (change directory)
+        # Обрабатываем команду cd (change directory) - теперь работает с VFS
         elif command == "cd":
-            print(f"Команда: cd")  # Выводим имя команды
-            
-            # Проверяем есть ли аргументы у команды
-            if args:
-                print(f"Аргументы: {args}")  # Выводим аргументы если они есть
-                # В реальной реализации здесь будет логика смены директории
-                # self.current_dir = args[0] и проверка существования пути
+            if not args:
+                # cd без аргументов - переход в корень VFS
+                self.vfs.current_vfs_path = "/"
             else:
-                print("Аргументы отсутствуют")  # Сообщаем об отсутствии аргументов
+                target_path = args[0]
+                new_path = self.vfs.resolve_path(target_path)
+                
+                if self.vfs.path_exists(new_path):
+                    # Получаем узел по пути
+                    node = self.vfs.get_node(new_path)  # Нужно добавить этот метод!
+                    if node.get('type') == 'directory':
+                        self.vfs.current_vfs_path = new_path
+                    else:
+                        print(f"cd: {target_path}: Не каталог")
+                else:
+                    print(f"cd: {target_path}: Нет такого файла или каталога")
         
-        # Добавляем команду echo для демонстрации работы с аргументами
+        # Новая команда cat для чтения файлов из VFS
+        elif command == "cat":
+            if not args:
+                print("cat: отсутствует операнд")
+                return
+            
+            for file_path in args:
+                content = self.vfs.read_file(self.vfs.resolve_path(file_path))
+                if content is not None:
+                    print(content)
+                else:
+                    print(f"cat: {file_path}: Нет такого файла или каталога")
+        
+        # Новая команда pwd для показа текущего пути в VFS
+        elif command == "pwd":
+            print(self.vfs.current_vfs_path)
+        
+        # Команда echo для демонстрации работы с аргументами
         elif command == "echo":
-            # Просто выводим все аргументы, объединенные в строку
             print(f"echo: {' '.join(args)}")
         
         # Обрабатываем неизвестные команды
         elif command:
             print(f"Команда '{command}' не найдена")
-    
+
     def run_script(self, script_path):
         """
         Выполняет команды из файла скрипта.
@@ -214,7 +426,7 @@ class ShellEmulator:
         
         # Затем переходим в интерактивный режим работы с пользователем
         print("\nИНТЕРАКТИВНЫЙ РЕЖИМ")
-        print("Доступные команды: ls, cd, echo, exit")  # Список поддерживаемых команд
+        print("Доступные команды: ls, cd, cat, pwd, echo, exit")  # Список поддерживаемых команд
         print("Для выхода введите 'exit'")  # Подсказка как выйти
         print("-" * 50)  # Разделительная линия
         
@@ -283,7 +495,7 @@ def main():
     
     # Парсим аргументы командной строки
     args = parse_arguments()
-    
+
     
     # Создаем экземпляр эмулятора с переданными параметрами
     shell = ShellEmulator(
