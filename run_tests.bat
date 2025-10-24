@@ -1,0 +1,1 @@
+python main.py --vfs-path test_vfs.json --startup-script test_basic.txt

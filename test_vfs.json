@@ -1,0 +1,48 @@
+{
+  "/": {
+    "type": "directory",
+    "content": {
+      "home": {
+        "type": "directory",
+        "content": {
+          "user": {
+            "type": "directory",
+            "content": {
+              "documents": {
+                "type": "directory",
+                "content": {
+                  "file1.txt": {
+                    "type": "file",
+                    "content": "Это содержимое file1.txt"
+                  },
+                  "file2.txt": {
+                    "type": "file", 
+                    "content": "Содержимое второго файла"
+                  }
+                }
+              },
+              "downloads": {
+                "type": "directory",
+                "content": {
+                  "archive.zip": {
+                    "type": "file",
+                    "content": "base64:e2FyY2hpdmV9"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "etc": {
+        "type": "directory",
+        "content": {
+          "config.conf": {
+            "type": "file",
+            "content": "параметр=значение\nрежим=работа"
+          }
+        }
+      }
+    }
+  }
+}

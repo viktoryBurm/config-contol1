@@ -1,0 +1,12 @@
+#!/bin/bash
+pwd
+ls
+ls /home
+cd /home/user
+pwd
+ls
+cd documents
+cat readme.txt
+wc data.txt
+tree /home
+cd /
